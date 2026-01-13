@@ -1,0 +1,18 @@
+[METADATA]
+ID: P1-IAC-003
+CATEGORY: Infrastructure-as-Code
+SERVICE: Terraform / AWS EC2
+IMPACT: Scaling Failure - New users cannot be onboarded
+TIMESTAMP: 2026-01-07T14:45:12Z
+
+[LOG_CONTENT]
+[Terraform-Apply] Error: Error launching source instance: VcpuLimitExceeded: You have reached your quota for vCPUs for running Dedicated Standard instances.
+Requested: 16, Remaining Quota: 4.
+
+[ROOT_CAUSE]
+A sudden surge in traffic triggered an Auto Scaling Group (ASG) expansion, but the AWS account hit the soft limit for the instance family (c5.xlarge) in the specific region.
+
+[SOLUTION]
+1. Immediate: Request an emergency quota increase via the AWS Support Console.
+2. Temporary Fix: Modify the 'instance_type' in Terraform to an underutilized family (e.g., m5.xlarge) and re-apply.
+3. Prevention: Setup CloudWatch alarms to notify the SRE team when resource usage hits 80% of the account quota.

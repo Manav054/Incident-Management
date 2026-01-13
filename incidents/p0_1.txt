@@ -1,0 +1,19 @@
+[METADATA]
+ID: P0-DB-001
+CATEGORY: Infrastructure
+SERVICE: Core-API
+IMPACT: Total Outage
+TIMESTAMP: 2026-01-07T10:15:22Z
+
+[LOG_CONTENT]
+2026-01-07 10:15:22.441 FATAL [PostgreSQL-Main] - Error: Connection pool 'prod-db-pool' is full. 
+Current State: Active=500, Idle=0, Pending=1240. 
+Exception: org.postgresql.util.PSQLException: FATAL: remaining connection slots are reserved for non-replication superuser connections.
+
+[ROOT_CAUSE]
+A recent deployment of the 'User-Profile' microservice introduced a leak where DB connections were not being returned to the pool in the exception-handling block.
+
+[SOLUTION]
+1. Immediate: Restart the PgBouncer service to force-clear hung connections.
+2. Deployment: Roll back 'User-Profile' service to version 1.4.2.
+3. Long-term: Implement a 'finally' block in the connection manager and set a 'max_lifetime' for pool connections.

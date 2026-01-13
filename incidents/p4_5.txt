@@ -1,0 +1,18 @@
+[METADATA]
+ID: P4-PERF-005
+CATEGORY: Enhancement
+SERVICE: Marketing-Landing-Page
+IMPACT: Trivial - 0.1s potential load time improvement
+TIMESTAMP: 2026-01-07T21:00:15Z
+
+[LOG_CONTENT]
+INFO [Lighthouse-Audit] - Image 'hero_banner.png' (4.2MB) could be compressed. 
+Potential savings: 3.8MB by converting to WebP format.
+
+[ROOT_CAUSE]
+The marketing team uploaded a high-resolution PNG for a banner that hasn't been optimized for web delivery yet.
+
+[SOLUTION]
+1. Immediate: None. 
+2. Fix: Convert the image to WebP format and replace it in the next content update.
+3. Prevention: Integrate an automated image compression step (e.g., Imagemin) into the CI/CD pipeline for the static assets folder.

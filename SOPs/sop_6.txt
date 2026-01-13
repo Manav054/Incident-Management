@@ -1,0 +1,32 @@
+STANDARD OPERATING PROCEDURE (SOP) 08: SSL CERTIFICATE EXPIRY
+DATE: 2026-01-12
+SEVERITY: HIGH (Security/Availability)
+
+1. OBJECTIVE
+   Renew expired or expiring SSL/TLS certificates to prevent browser warnings 
+   and service interruptions.
+
+2. INITIAL TRIAGE
+   2.1 Verify Expiry Date
+       - Command: `echo | openssl s_client -servername <domain> -connect <domain>:443 2>/dev/null | openssl x509 -noout -dates`
+       - Browser: Click the lock icon -> Connection is secure -> Certificate is valid.
+
+3. RESOLUTION STEPS
+   3.1 Renew Certificate (LetsEncrypt/Certbot)
+       - Command: `certbot renew --dry-run` (Test first).
+       - Command: `certbot renew` (Actual renewal).
+       - Note: Ensure port 80 is open for validation.
+
+   3.2 Renew Certificate (Manual/Paid)
+       - Generate CSR: `openssl req -new -newkey rsa:2048 -nodes -keyout domain.key -out domain.csr`
+       - Submit CSR to Certificate Authority (CA).
+       - Download new .crt file.
+
+   3.3 Install and Restart
+       - Place new keys/certs in `/etc/ssl/` (or web server config path).
+       - Verify Config: `nginx -t` or `apachectl configtest`.
+       - Reload Service: `systemctl reload nginx` (Do not restart if possible to avoid downtime).
+
+4. VALIDATION
+   - Re-run the OpenSSL command from step 2.1.
+   - Verify "notAfter" date is in the future.

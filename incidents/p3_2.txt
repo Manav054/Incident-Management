@@ -1,0 +1,19 @@
+[METADATA]
+ID: P3-DOC-002
+CATEGORY: Documentation / Content
+SERVICE: Help-Center-Portal
+IMPACT: Low - Users cannot access one specific help article
+TIMESTAMP: 2026-01-07T18:15:22Z
+
+[LOG_CONTENT]
+404 Not Found: GET /help/v2/shipping-policy-update-2025.pdf
+Referrer: https://jnj-app.com/settings/shipping
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+
+[ROOT_CAUSE]
+The PDF asset was renamed in the source repository, but the hardcoded link in the "Settings" page was not updated during the CI build process.
+
+[SOLUTION]
+1. Immediate: Create a 301 Redirect in the Ingress controller from the old URL to the new PDF location.
+2. Fix: Update the href attribute in the React component to point to the correct asset path.
+3. Prevention: Use a "Broken Link Checker" tool as a post-deployment verification (SMOKE test) step.

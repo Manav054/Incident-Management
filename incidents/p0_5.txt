@@ -1,0 +1,19 @@
+[METADATA]
+ID: P0-CLD-005
+CATEGORY: Cloud-Provider
+SERVICE: AWS DynamoDB
+IMPACT: Regional Data Failure
+TIMESTAMP: 2026-01-07T11:00:15Z
+
+[LOG_CONTENT]
+EMERGENCY: [Health-Check] Global health check failing for region 'us-east-1'. 
+Exception: com.amazonaws.SdkClientException: Unable to execute HTTP request: Connect to dynamodb.us-east-1.amazonaws.com:443 timed out.
+Retry Status: 5/5 attempts exhausted.
+
+[ROOT_CAUSE]
+Major service disruption in AWS US-EAST-1 affecting DynamoDB and Lambda execution.
+
+[SOLUTION]
+1. Immediate: Trigger the Multi-Region Failover script.
+2. DNS: Update Route 53 CNAME records to route traffic to 'us-west-2' (Standby region).
+3. Post-Incident: Verify data consistency between Global Tables once the primary region is back online.

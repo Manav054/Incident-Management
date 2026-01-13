@@ -1,0 +1,44 @@
+STANDARD OPERATING PROCEDURE (SOP) 06: CONTAINER / POD FAILURE
+DATE: 2026-01-12
+SEVERITY: HIGH
+
+1. OBJECTIVE
+   Debug and fix containers/pods that are Crashing, Exiting, or stuck in Pending state 
+   (Docker / Kubernetes).
+
+2. INITIAL TRIAGE
+   2.1 Check Status
+       - Docker: `docker ps -a` (Check for "Exited")
+       - K8s: `kubectl get pods` (Check for "CrashLoopBackOff", "Pending", "Error")
+   2.2 Check Logs
+       - Docker: `docker logs <id> --tail 50`
+       - K8s: `kubectl logs <pod> --previous` (View logs from the crashed instance).
+
+3. RESOLUTION STEPS
+
+   3.1 Analyze Exit Codes
+       - Code 0: Process finished normally (Container might not have a long-running process).
+       - Code 1: Application error (Check app config/env vars).
+       - Code 137: OOMKilled (Out of Memory). Increase RAM limit.
+       - Code 127: Command not found (Missing entrypoint binary).
+
+   3.2 Inspect Kubernetes Events
+       - Action: `kubectl describe pod <pod_name>`
+       - Look for:
+         - "FailedScheduling" -> Insufficient CPU/RAM on nodes.
+         - "ErrImagePull" -> Wrong image name or missing registry credentials.
+         - "BackOff" -> App is crashing repeatedly on startup.
+
+   3.3 Debug via Shell Override
+       - Context: Container crashes too fast to inspect.
+       - Docker Action: `docker run -it --entrypoint /bin/sh <image>`
+       - K8s Action: Edit YAML command to `["sleep", "3600"]`, apply, then `kubectl exec`.
+       - Goal: Manually run the start command inside to see the error.
+
+   3.4 Verify Mounts and Network
+       - Action: Ensure mounted volumes exist on the host.
+       - Action: Check if container needs specific network privileges (host networking).
+
+4. VALIDATION
+   - Status is "Up" or "Running".
+   - Application logs confirm "Server started" or "Listening on port X".

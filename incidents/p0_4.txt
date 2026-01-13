@@ -1,0 +1,19 @@
+[METADATA]
+ID: P0-IAC-004
+CATEGORY: Infrastructure-as-Code
+SERVICE: Terraform / AWS S3
+IMPACT: Static Assets Missing
+TIMESTAMP: 2026-01-07T10:45:00Z
+
+[LOG_CONTENT]
+[2026-01-07 10:45:00] FATAL [Terraform-Apply] - Error: Deleting critical resource 'aws_s3_bucket.prod_assets'. 
+Logic: Resource 'prod_assets' was renamed in code but not moved in state. Terraform attempting 'Destroy and Create'.
+Result: 404 Access Denied for all frontend JS/CSS files.
+
+[ROOT_CAUSE]
+A developer renamed a Terraform module without using the 'moved' block, causing the CI/CD pipeline to interpret it as a deletion of the old bucket.
+
+[SOLUTION]
+1. Immediate: Halt the CI/CD pipeline.
+2. Restore: Point the CloudFront distribution to the S3 'Backup-Bucket' (DR site).
+3. Fix: Use 'terraform state mv' to align the state file with the new resource names. Enable 'deletion_protection' on all production buckets.

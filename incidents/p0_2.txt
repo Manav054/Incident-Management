@@ -1,0 +1,19 @@
+[METADATA]
+ID: P0-NET-002
+CATEGORY: Networking/Security
+SERVICE: Ingress-Controller
+IMPACT: 100% Traffic Drop
+TIMESTAMP: 2026-01-07T10:20:05Z
+
+[LOG_CONTENT]
+[2026-01-07 10:20:05] ALERT: [Ingress-Nginx] SSL Handshake failed for all incoming traffic. 
+ERROR: OpenSSL: error:14094415:SSL routines:ssl3_read_bytes:sslv3 alert certificate expired. 
+Target Domain: api.jnj-production.com
+
+[ROOT_CAUSE]
+The automated renewal script for Let's Encrypt failed due to a DNS-01 challenge timeout, and the monitoring alert for certificate expiration was misconfigured.
+
+[SOLUTION]
+1. Immediate: Manually trigger the Cert-Manager renewal via kubectl.
+2. Manual Patch: If auto-renewal fails, upload a temporary wildcard cert to the K8s secret 'production-tls-cert'.
+3. Prevention: Setup 'UptimeRobot' or 'Prometheus' Blackbox Exporter to alert 15 days before expiry.

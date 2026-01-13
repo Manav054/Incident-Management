@@ -1,0 +1,20 @@
+[METADATA]
+ID: P2-OPS-004
+CATEGORY: Microservices
+SERVICE: Media-Processor
+IMPACT: Medium - Thumbnails not generating; high-res images still work
+TIMESTAMP: 2026-01-07T17:00:00Z
+
+[LOG_CONTENT]
+ERROR [Media-Svc] - Failed to process image 'user_772_avatar.png'. 
+Reason: ImageMagick process exited with error code 1. 
+Stack: 'libpng error: IDAT: CRC error'. 
+Fallback: Serving original high-res image.
+
+[ROOT_CAUSE]
+The worker nodes running the Image Resizer service were missing the latest `libpng` security patch, causing them to crash when processing specific PNG formats uploaded by users.
+
+[SOLUTION]
+1. Immediate: Scale up the 'Media-Processor' deployment with a fresh Docker image that includes updated libraries.
+2. Fix: Update the base Dockerfile to pin the specific version of `libpng` and `imagemagick`.
+3. Prevention: Use a vulnerability scanner like Snyk or Trivy in the CI pipeline to catch outdated OS libraries before they reach production.

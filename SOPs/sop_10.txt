@@ -1,0 +1,37 @@
+STANDARD OPERATING PROCEDURE (SOP) 12: READ-ONLY FILESYSTEM
+DATE: 2026-01-12
+SEVERITY: CRITICAL
+
+1. OBJECTIVE
+   Restore a filesystem that has flipped to Read-Only (RO) mode due to 
+   hardware errors or corruption.
+
+2. INITIAL TRIAGE
+   2.1 Confirmation
+       - Symptom: "Read-only file system" error when trying to `touch` a file.
+       - Command: `mount | grep " ro,"` (Check for 'ro' flag on mount points).
+   2.2 Check Kernel Logs
+       - Command: `dmesg | tail -n 50`
+       - Look for: "I/O error", "EXT4-fs error", "Remounting filesystem read-only".
+
+3. RESOLUTION STEPS
+   3.1 Backup (Best Effort)
+       - Attempt to copy critical data off immediately if possible (read often still works).
+
+   3.2 File System Check (FSCK)
+       - Warning: Requires unmounting the disk.
+       - Action: Unmount: `umount /dev/sdX`
+       - Run Fix: `fsck -y /dev/sdX`
+       - Note: If root partition (/) is affected, a reboot is required to force fsck on startup (`touch /forcefsck` won't work if RO; use kernel boot params).
+
+   3.3 Remount
+       - Try remounting RW: `mount -o remount,rw /mountpoint`
+       - If this fails immediately, the disk hardware may be physically failing.
+
+   3.4 Hardware Replacement
+       - If VM: Detach volume, attach to recovery VM, run fsck there.
+       - If Physical: Replace drive if SMART errors are present (`smartctl -a /dev/sdX`).
+
+4. VALIDATION
+   - Mount output shows `rw`.
+   - `touch testfile` succeeds.

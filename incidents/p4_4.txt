@@ -1,0 +1,18 @@
+[METADATA]
+ID: P4-DOC-004
+CATEGORY: Documentation
+SERVICE: Internal-Utils-Repo
+IMPACT: Trivial - Slight delay for new developers
+TIMESTAMP: 2026-01-07T20:45:00Z
+
+[LOG_CONTENT]
+[CI-Lint] WARN: Repository 'jnj-data-utils' is missing a README.md file. 
+[CI-Lint] WARN: No 'contributing.md' found in root directory.
+
+[ROOT_CAUSE]
+A new utility repository was initialized via CI/CD, but the developer skipped the documentation step.
+
+[SOLUTION]
+1. Immediate: None.
+2. Fix: Create a basic README.md explaining the utility's purpose and usage instructions.
+3. Prevention: Update the repository scaffolding template to include mandatory documentation files.

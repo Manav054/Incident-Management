@@ -1,0 +1,19 @@
+[METADATA]
+ID: P1-INT-002
+CATEGORY: External-Integration
+SERVICE: Payment-Gateway-Worker
+IMPACT: High - Users cannot process credit cards
+TIMESTAMP: 2026-01-07T14:25:30Z
+
+[LOG_CONTENT]
+2026-01-07 14:25:30 ERROR [PaymentSvc] - External API 'Stripe' returned 401 Unauthorized.
+Message: "Invalid API Key provided."
+Context: RequestID: req_8821x9, Environment: PROD
+
+[ROOT_CAUSE]
+The production API keys were rotated by the security team, but the Jenkins credentials store was not updated, causing the CI/CD pipeline to inject stale secrets into the container environment.
+
+[SOLUTION]
+1. Immediate: Update the Jenkins/Vault credentials with the new Stripe Production Secret Key.
+2. Deployment: Re-run the deployment pipeline for the Payment service to pick up new environment variables.
+3. Prevention: Implement automated secret rotation synchronization between the Cloud Secret Manager and the CI/CD pipeline.

@@ -1,0 +1,20 @@
+[METADATA]
+ID: P2-PERF-001
+CATEGORY: Performance
+SERVICE: Search-API
+IMPACT: Medium - User search experience is sluggish
+TIMESTAMP: 2026-01-07T16:05:00Z
+
+[LOG_CONTENT]
+WARN [Search-Svc] - Request latency exceeded threshold. 
+Target: /v1/search/products. 
+Average Latency: 4200ms. Threshold: 500ms. 
+Context: Database IO Wait high on index 'idx_product_description'.
+
+[ROOT_CAUSE]
+A recent CI/CD deployment added a 'wildcard' search feature that bypasses the primary database index, causing full table scans for every search request.
+
+[SOLUTION]
+1. Immediate: Disable the 'wildcard' search flag via the Feature Toggle dashboard.
+2. Fix: Refactor the SQL query to use a 'Full-Text Search' index (like Elasticsearch or Gin index) instead of a standard B-tree index.
+3. Prevention: Add a performance regression test step in the CI pipeline that fails the build if API latency increases by more than 20% in the staging environment.

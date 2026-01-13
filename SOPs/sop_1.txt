@@ -1,0 +1,40 @@
+STANDARD OPERATING PROCEDURE (SOP) 04: MONITORING FAILURE
+DATE: 2026-01-12
+SEVERITY: HIGH (Blind Spot)
+
+1. OBJECTIVE
+   Restore metric and log flow from the target system to the monitoring platform 
+   (e.g., Prometheus, Grafana, Datadog) to ensure visibility.
+
+2. INITIAL TRIAGE
+   2.1 Scope the Issue
+       - Is it a single metric, a single host, or the entire dashboard?
+   2.2 Connectivity Check
+       - Run: curl -v <monitoring_endpoint_url>
+       - Result: If connection timed out, suspect network/firewall.
+
+3. RESOLUTION STEPS
+
+   3.1 Validate Time Synchronization (NTP)
+       - Context: Monitoring backends often reject data with skewed timestamps.
+       - Action: Run `timedatectl` or `ntpq -p`.
+       - Fix: If drifted, run `systemctl restart chronyd` (or `ntp`).
+
+   3.2 Check Firewall & Security Groups
+       - Context: Outbound traffic to the monitoring server might be blocked.
+       - Action: Check local firewall (`ufw status` / `iptables -L`).
+       - Action: Verify cloud Security Groups allow outbound on ports 443/9090.
+
+   3.3 Verify Configuration Syntax
+       - Context: Recent changes to YAML files often cause silent failures.
+       - Action: Validate config (e.g., `promtool check config prometheus.yml`).
+       - Action: Check for indentation errors.
+
+   3.4 Check Resource Limits
+       - Context: The agent itself may be OOM killed or throttled.
+       - Action: Check agent status: `systemctl status <agent_service>`.
+       - Action: Check system memory: `free -h`.
+
+4. VALIDATION
+   - Query the "up" metric or check "Host Status" in the dashboard.
+   - Verify the "Last Seen" timestamp is within the last 1 minute.

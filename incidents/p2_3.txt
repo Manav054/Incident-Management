@@ -1,0 +1,20 @@
+[METADATA]
+ID: P2-CI-003
+CATEGORY: CI/CD Pipeline
+SERVICE: Integration-Test-Suite
+IMPACT: Medium - Deployment velocity reduced; manual approvals required
+TIMESTAMP: 2026-01-07T16:40:12Z
+
+[LOG_CONTENT]
+[Jenkins-Pipeline] Step 'Integration Tests' FAILED.
+Error: Timeout waiting for element '#login-success-msg' after 30000ms.
+Note: Test passed on 2nd retry. Status: UNSTABLE.
+Build Duration: 55 minutes (expected 20 minutes).
+
+[ROOT_CAUSE]
+A "Race Condition" in the Selenium test suite where the test attempts to verify the success message before the mock authentication server has finished processing the request.
+
+[SOLUTION]
+1. Immediate: Mark the specific test case as `@Ignore` or `@Flaky` to allow the pipeline to proceed for critical hotfixes.
+2. Fix: Replace hard-coded 'sleep' timers with 'Explicit Waits' that poll for the availability of the DOM element.
+3. Prevention: Implement a "Quarantine" area for flaky tests where they are run separately until they prove 99% reliability over 50 runs.

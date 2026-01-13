@@ -1,0 +1,41 @@
+STANDARD OPERATING PROCEDURE (SOP) 05: DATABASE STARTUP FAILURE
+DATE: 2026-01-12
+SEVERITY: CRITICAL (Service Down)
+
+1. OBJECTIVE
+   Identify the root cause of the database failure (MySQL, Postgres, MongoDB) 
+   and bring the service online safely without data loss.
+
+2. INITIAL TRIAGE
+   2.1 Read the Error Log (Mandatory)
+       - MySQL: /var/log/mysql/error.log
+       - Postgres: /var/log/postgresql/postgresql-*.log
+   2.2 Check Disk Space
+       - Action: Run `df -h`.
+       - Note: DBs will not start if the volume is 100% full.
+
+3. RESOLUTION STEPS
+
+   3.1 Fix Ownership/Permissions
+       - Context: Common after manual data restoration or migration.
+       - Action: Ensure DB user owns data dir.
+       - Command: `chown -R mysql:mysql /var/lib/mysql` (Adjust for DB type).
+
+   3.2 Remove Stale PID Files
+       - Context: A crash may leave a .pid file, fooling the OS into thinking the DB is running.
+       - Action: Check /var/run/<db>/<db>.pid.
+       - Warning: Only delete if the process is confirmed dead (`ps aux | grep mysql`).
+
+   3.3 Resolve Port Conflicts
+       - Context: Another service (or a zombie DB process) is holding the port.
+       - Action: `netstat -tulpn | grep <port>` (3306 or 5432).
+       - Fix: Kill the rogue process blocking the port.
+
+   3.4 Recovery Mode (Data Corruption)
+       - Context: Logs show "Corruption" or "Page Error".
+       - Action: Enable recovery mode in config (e.g., `innodb_force_recovery=1`).
+       - Critical: Take a SQL dump backup immediately if it starts, then rebuild.
+
+4. VALIDATION
+   - Connect via CLI: `mysql -u root -p` or `psql -U postgres`.
+   - Run test query: `SELECT 1;`.

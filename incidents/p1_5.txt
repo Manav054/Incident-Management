@@ -1,0 +1,17 @@
+[METADATA]
+ID: P1-OPS-005
+CATEGORY: Container-Orchestration
+SERVICE: Docker-Registry / Artifactory
+IMPACT: Deployment Stalled - Nodes cannot pull images
+TIMESTAMP: 2026-01-07T15:30:45Z
+
+[LOG_CONTENT]
+Failed to pull image "internal-registry.jnj.com/app/orders:latest": rpc error: code = Unknown desc = failed to pull and unpack image: failed to resolve reference: failed to do request: Head "https://internal-registry.jnj.com/v2/app/orders/manifests/latest": dial tcp 10.0.0.55:443: connect: connection refused
+
+[ROOT_CAUSE]
+The internal Docker registry (JFrog Artifactory) ran out of storage space on its primary mount point, causing the API to reject all incoming 'pull' requests from the Kubernetes cluster.
+
+[SOLUTION]
+1. Immediate: Clear the 'trash can' and run a cleanup policy on the registry to free up space.
+2. Infrastructure: Expand the EBS volume/Disk attached to the registry server.
+3. Prevention: Implement a retention policy in CI/CD to delete images older than 30 days automatically.

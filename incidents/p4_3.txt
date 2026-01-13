@@ -1,0 +1,19 @@
+[METADATA]
+ID: P4-LOG-003
+CATEGORY: Observability
+SERVICE: Auth-Service
+IMPACT: Trivial - Minor increase in log storage costs
+TIMESTAMP: 2026-01-07T20:30:12Z
+
+[LOG_CONTENT]
+INFO [Auth-Svc] - Heartbeat check: Success. Timestamp: 1736254012.
+INFO [Auth-Svc] - Heartbeat check: Success. Timestamp: 1736254013.
+INFO [Auth-Svc] - Heartbeat check: Success. Timestamp: 1736254014.
+
+[ROOT_CAUSE]
+The heartbeat monitor is logging "Success" messages every second at the INFO level instead of the DEBUG level, cluttering the production logs.
+
+[SOLUTION]
+1. Immediate: None.
+2. Fix: Change the logging level for heartbeat checks from 'INFO' to 'DEBUG' in the application configuration.
+3. Prevention: Define a logging standard that restricts per-second repetitive messages to 'TRACE' or 'DEBUG' levels only.

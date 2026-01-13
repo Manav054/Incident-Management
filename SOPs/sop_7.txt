@@ -1,0 +1,31 @@
+STANDARD OPERATING PROCEDURE (SOP) 09: DDOS ATTACK MITIGATION
+DATE: 2026-01-12
+SEVERITY: CRITICAL
+
+1. OBJECTIVE
+   Mitigate Denial of Service attacks to restore legitimate traffic flow.
+
+2. INITIAL TRIAGE
+   2.1 Confirm Attack
+       - Symptoms: High latency, 502/503 errors, massive spike in inbound network traffic.
+       - Command: `netstat -ntu | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -n` (Count connections by IP).
+
+3. RESOLUTION STEPS
+   3.1 Enable Cloud Defenses (First Line)
+       - Activate "Under Attack Mode" (Cloudflare/AWS Shield/Azure DDoS).
+       - Enable WAF (Web Application Firewall) rules.
+
+   3.2 Block Malicious IPs (Server Level)
+       - If specific IPs are flooding: `iptables -A INPUT -s <IP_ADDRESS> -j DROP`
+       - Or use `fail2ban` if not already active.
+
+   3.3 Rate Limiting
+       - Web Server: Configure Nginx `limit_req_zone` or Apache `mod_ratelimit`.
+       - Application: Temporarily disable heavy search/API endpoints if they are targets.
+
+   3.4 Scale Resources
+       - Temporarily increase server count (Auto-scaling) to absorb traffic volume while mitigation takes effect.
+
+4. VALIDATION
+   - Traffic volume normalizes.
+   - Legitimate user requests return 200 OK.

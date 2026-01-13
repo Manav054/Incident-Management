@@ -1,0 +1,19 @@
+[METADATA]
+ID: P2-INFRA-005
+CATEGORY: Monitoring / Infrastructure
+SERVICE: ELK-Stack (Elasticsearch)
+IMPACT: Medium - Loss of observability; dashboards not updating
+TIMESTAMP: 2026-01-07T17:15:30Z
+
+[LOG_CONTENT]
+[Elasticsearch] ERROR: ClusterBlockException[blocked by: [FORBIDDEN/12/index read-only / allow delete/api];]
+Cause: Low disk watermark [95%] exceeded on node [data-node-03]. 
+Impact: New logs from Production are being dropped.
+
+[ROOT_CAUSE]
+A developer enabled 'DEBUG' level logging on the 'Order-Service' in production, causing a 10x increase in log volume that filled the Elasticsearch data disks.
+
+[SOLUTION]
+1. Immediate: Revert the 'Order-Service' log level to 'INFO' via the environment config. Clear old indices using 'Curator' or manual delete API.
+2. Fix: Add a larger EBS volume to the Elasticsearch data nodes and rebalance the shards.
+3. Prevention: Set up "Index Lifecycle Management" (ILM) to automatically move old logs to "Cold" storage (S3) after 7 days.

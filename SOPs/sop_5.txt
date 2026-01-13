@@ -1,0 +1,35 @@
+STANDARD OPERATING PROCEDURE (SOP) 07: HIGH CPU USAGE
+DATE: 2026-01-12
+SEVERITY: MEDIUM/HIGH
+
+1. OBJECTIVE
+   Identify processes consuming excessive CPU and mitigate system slowdowns 
+   or unresponsiveness.
+
+2. INITIAL TRIAGE
+   2.1 Verify Load Average
+       - Command: `uptime` or `top`
+       - Threshold: If load average > total CPU cores, system is overloaded.
+
+3. RESOLUTION STEPS
+   3.1 Identify Top Consumers
+       - Command: `top -o %CPU` or `htop`
+       - Note PID (Process ID) and Command of top consumers.
+
+   3.2 Analyze Process Behavior
+       - Is it a legitimate backup/batch job? (Wait if non-critical).
+       - Is it a runaway process (stuck loop)?
+       - Command: `strace -p <PID>` (Attach to process to see what it's doing - Linux only).
+
+   3.3 Mitigation
+       - Graceful Stop: `kill -15 <PID>` (SIGTERM)
+       - Force Kill (If stuck): `kill -9 <PID>` (SIGKILL) - Use as last resort.
+       - Rate Limit (Optional): Use `cpulimit` tool if process must run but is too aggressive.
+
+   3.4 Check for I/O Wait
+       - In `top`, check "wa" (wait) percentage. High "wa" means CPU is idle waiting for Disk I/O.
+       - Action: Investigate disk speed/health instead of CPU.
+
+4. VALIDATION
+   - CPU usage drops below 80%.
+   - Load average trends downwards over 5 minutes.

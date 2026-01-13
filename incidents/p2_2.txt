@@ -1,0 +1,20 @@
+[METADATA]
+ID: P2-NET-002
+CATEGORY: Networking / Content Delivery
+SERVICE: Frontend-Assets
+IMPACT: Medium - Visual glitches for users in Europe
+TIMESTAMP: 2026-01-07T16:20:45Z
+
+[LOG_CONTENT]
+ERROR [CloudFront] - Cache Invalidation failed for path '/*'. 
+Status: IN_PROGRESS (Stuck for 4 hours). 
+Header mismatch: X-Cache: Miss from cloudfront. 
+Result: Users receiving stale CSS files (v1.1) while JS is v1.2.
+
+[ROOT_CAUSE]
+The CI/CD "Post-Deploy" script failed to trigger a global CDN invalidation due to a temporary API timeout from the cloud provider, leading to version mismatch between assets.
+
+[SOLUTION]
+1. Immediate: Manually trigger a targeted invalidation for the `/static/css/` directory via the AWS/Azure console.
+2. Fix: Implement "Cache Busting" by appending unique build hashes to filenames (e.g., style.8h2k9.css) instead of relying on manual invalidations.
+3. Prevention: Update the deployment script to verify 200 OK status from the CDN invalidation API before marking the build as "Success."

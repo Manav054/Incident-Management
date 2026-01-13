@@ -1,0 +1,33 @@
+STANDARD OPERATING PROCEDURE (SOP) 10: USER ACCESS LOCKOUT
+DATE: 2026-01-12
+SEVERITY: LOW/MEDIUM
+
+1. OBJECTIVE
+   Restore access for a user who is locked out of a Linux server or VPN 
+   due to password failures or SSH key issues.
+
+2. INITIAL TRIAGE
+   2.1 Identify User and Error
+       - Check `/var/log/secure` (RHEL/CentOS) or `/var/log/auth.log` (Ubuntu).
+       - Look for "Too many authentication failures" or "Account locked".
+
+3. RESOLUTION STEPS
+   3.1 Check Account Status
+       - Command: `passwd -S <username>` (Check if locked 'L' or password expired).
+       - Command: `faillock --user <username>` (Check failure count).
+
+   3.2 Unlock Account
+       - Reset Fail Count: `faillock --user <username> --reset`
+       - Unlock Password: `passwd -u <username>`
+
+   3.3 Reset Password (If required)
+       - Command: `passwd <username>` (Prompt for new password).
+       - Force change on next login: `chage -d 0 <username>`
+
+   3.4 SSH Key Issues
+       - If passwordless login fails: Check `~/.ssh/authorized_keys` permissions (must be 600).
+       - Check home directory permissions (must be 700, not writable by others).
+
+4. VALIDATION
+   - User successfully logs in.
+   - Verify `faillock` count is 0.

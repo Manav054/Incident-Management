@@ -1,0 +1,20 @@
+[METADATA]
+ID: P0-K8S-003
+CATEGORY: Orchestration
+SERVICE: Auth-Service
+IMPACT: Login Impossible
+TIMESTAMP: 2026-01-07T10:35:10Z
+
+[LOG_CONTENT]
+CRITICAL: [K8s-Scheduler] Pod 'auth-service-v3-84f9' is in CrashLoopBackOff. 
+Last State: Terminated
+Reason: OOMKilled (Exit Code 137)
+Memory: Usage=2048Mi / Limit=2048Mi
+
+[ROOT_CAUSE]
+The v3 update of the Auth-Service included a memory-intensive library for token encryption that exceeded the previous resource limits defined in the Helm chart.
+
+[SOLUTION]
+1. Immediate: Patch the deployment YAML to increase memory limits to 4Gi.
+2. Action: If stability isn't restored, run 'kubectl rollout undo deployment/auth-service'.
+3. Prevention: Integrate 'Kube-score' in the CI pipeline to validate resource requests vs. limits before deployment.

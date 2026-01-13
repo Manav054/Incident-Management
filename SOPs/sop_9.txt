@@ -1,0 +1,31 @@
+STANDARD OPERATING PROCEDURE (SOP) 11: DNS RESOLUTION FAILURE
+DATE: 2026-01-12
+SEVERITY: HIGH
+
+1. OBJECTIVE
+   Fix server inability to resolve domain names (e.g., cannot `git pull`, cannot reach API).
+
+2. INITIAL TRIAGE
+   2.1 Test Resolution
+       - Command: `nslookup google.com` or `dig google.com`
+       - Error: "Temporary failure in name resolution" or "NXDOMAIN".
+
+3. RESOLUTION STEPS
+   3.1 Check Resolver Config
+       - File: `/etc/resolv.conf`
+       - Content: Should contain `nameserver 8.8.8.8` or internal DNS IP.
+       - Fix: Edit file (caution: may be overwritten by NetworkManager/systemd-resolved).
+
+   3.2 Restart DNS Service
+       - Ubuntu: `systemctl restart systemd-resolved`
+       - Legacy: `service network restart` (Be careful remotely).
+
+   3.3 Check Outbound DNS Port
+       - Firewall: Ensure UDP port 53 is open outbound.
+       - Test: `nc -z -v -u 8.8.8.8 53`
+
+   3.4 Flush DNS Cache
+       - Command: `resolvectl flush-caches` or `systemd-resolve --flush-caches`.
+
+4. VALIDATION
+   - Command `ping google.com` resolves to an IP address.

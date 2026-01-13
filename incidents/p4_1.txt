@@ -1,0 +1,19 @@
+[METADATA]
+ID: P4-DEV-001
+CATEGORY: Technical Debt
+SERVICE: Backend-API / Node.js
+IMPACT: Trivial - No user impact
+TIMESTAMP: 2026-01-07T20:00:00Z
+
+[LOG_CONTENT]
+(node:1240) [DEP0111] DeprecationWarning: Access to process.binding('http_parser') is deprecated.
+Please use public APIs instead.
+Stack: at Object.<anonymous> (node_modules/old-http-lib/index.js:4:25)
+
+[ROOT_CAUSE]
+A legacy internal library is using a deprecated Node.js core module. While it still functions in the current Node version, it may break in future major releases.
+
+[SOLUTION]
+1. Immediate: None. The system remains fully operational.
+2. Fix: Schedule a task to update 'old-http-lib' to a modern version or replace it with the standard 'axios' library.
+3. Prevention: Implement a dependency linting tool that flags packages with high deprecation counts.

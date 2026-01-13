@@ -1,0 +1,19 @@
+[METADATA]
+ID: P3-CI-004
+CATEGORY: Developer Experience
+SERVICE: Jenkins-Pipeline
+IMPACT: Low - Confuses developers during build monitoring
+TIMESTAMP: 2026-01-07T18:45:00Z
+
+[LOG_CONTENT]
+[Jenkins-Build] WARN: Multiple versions of 'lodash' detected in dependency graph. 
+Required: ^4.17.21, Found: 4.17.15, 4.17.21. 
+Note: This may cause unpredictable behavior in polyfills.
+
+[ROOT_CAUSE]
+A sub-dependency in the 'Payment-Library' is pinning an older version of lodash, triggering a warning in the CI console logs even though the application functions correctly.
+
+[SOLUTION]
+1. Immediate: Acknowledge the warning; no production action needed.
+2. Fix: Use 'npm-dedupe' or add a 'resolution' block in package.json to force a single version of the library.
+3. Prevention: Enforce a "Zero Warnings" policy for production builds to keep logs clean and meaningful.

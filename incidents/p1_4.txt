@@ -1,0 +1,20 @@
+[METADATA]
+ID: P1-BLD-004
+CATEGORY: Build-Failure
+SERVICE: React-Frontend
+IMPACT: High - Unable to push hotfixes to production
+TIMESTAMP: 2026-01-07T15:05:00Z
+
+[LOG_CONTENT]
+npm ERR! code ERESOLVE
+npm ERR! ERESOLVE could not resolve dependency node_modules/auth-lib
+npm ERR! Found: react@"18.2.0"
+npm ERR! Conflicting peer dependency: react@"^16.0.0 || ^17.0.0" from auth-lib@2.1.0
+
+[ROOT_CAUSE]
+An automated 'Dependabot' PR merged a minor version update for React that was incompatible with the internal authentication library's peer dependency requirements.
+
+[SOLUTION]
+1. Immediate: Revert the commit that updated 'package-lock.json'.
+2. Fix: Update the 'auth-lib' to version 3.0.0 which supports React 18, or use the '--legacy-peer-deps' flag as a temporary build override.
+3. Prevention: Configure CI to run 'npm audit' and dependency compatibility checks on all automated PRs before merging.

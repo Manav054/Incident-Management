@@ -1,0 +1,19 @@
+[METADATA]
+ID: P3-UI-001
+CATEGORY: Frontend / UX
+SERVICE: Dashboard-UI
+IMPACT: Low - Cosmetic misalignment in footer
+TIMESTAMP: 2026-01-07T18:00:00Z
+
+[LOG_CONTENT]
+WARN [Frontend-Sentry] - CSS Layout Error: 'flex-direction' property mismatch on '.footer-links' container. 
+Detected on: Chrome v120, Resolution 1920x1080.
+Context: Footer icons overlapping text in dark mode.
+
+[ROOT_CAUSE]
+A global CSS refactor in the latest CI/CD build changed a utility class used by the footer, causing a minor visual overlap only in specific browser resolutions.
+
+[SOLUTION]
+1. Immediate: None required for production stability. 
+2. Fix: Adjust the CSS selector specificity for the footer container in the next scheduled sprint release.
+3. Prevention: Implement Visual Regression Testing (e.g., Percy or Applitools) in the CI pipeline to catch pixel-level changes.

@@ -1,0 +1,19 @@
+[METADATA]
+ID: P1-DEP-001
+CATEGORY: CI/CD Pipeline
+SERVICE: Checkout-Service
+IMPACT: Deployment Blocked / Partial Feature Failure
+TIMESTAMP: 2026-01-07T14:10:00Z
+
+[LOG_CONTENT]
+ERROR [Flyway] - Migration failed: Validate failed: Migrations have failed validation.
+Detected resolved migration not applied to database: 20260107.01__add_loyalty_column.sql
+[Jenkins-Build] Build #442 status: FAILURE. Deployment aborted to prevent schema corruption.
+
+[ROOT_CAUSE]
+A developer manually executed a SQL script on the production database, causing the checksum of the automated migration script in the CI/CD pipeline to mismatch the current DB state.
+
+[SOLUTION]
+1. Immediate: Compare the checksum in the 'flyway_schema_history' table with the local file.
+2. Fix: Manually update the checksum in the history table to match the new script or repair the Flyway baseline using 'flyway repair'.
+3. Prevention: Restrict manual 'write' access to production DB schemas; enforce all changes through the pipeline.
