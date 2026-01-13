@@ -1,165 +1,157 @@
 import os
-
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from langgraph.graph import StateGraph, START, END, MessagesState
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import MemorySaver
 
 # --- Configuration ---
 DB_PATH = "./chroma_db"
 EMBEDDING_MODEL = "gte-large:latest"
 LLM_MODEL = "llama-3.2-3b-it:latest"
+OUTPUT_FOLDER = "./final_drafts"
 
-print("--- Setting up Vector Store ---")
-embedding_function = OllamaEmbeddings(model=EMBEDDING_MODEL)
+# --- Initialize Components ---
+llm = ChatOllama(model=LLM_MODEL, temperature=0)
+embedding = OllamaEmbeddings(model=EMBEDDING_MODEL)
 
-# Ensure DB directory exists to avoid initial errors
-if not os.path.exists(DB_PATH):
-    os.makedirs(DB_PATH)
-
-vector_store = Chroma(
-    persist_directory=DB_PATH,
-    embedding_function=embedding_function
+# --- Initialize Vector Collections ---
+# Note: This assumes you have already ingested data into these collections.
+incident_vc = Chroma(
+    persist_directory=DB_PATH, 
+    embedding_function=embedding, 
+    collection_name="incident_collection"
+)
+sop_vc = Chroma(
+    persist_directory=DB_PATH, 
+    embedding_function=embedding, 
+    collection_name="sop_collection"
 )
 
+# --- Tool 1: Incident Retrieval ---
 @tool(response_format="content_and_artifact")
-def retrieve_similar_incidents(query: str, category_filter: str):
+def fetch_incidents(query: str):
+    """Retrieves 3 similar incidents. Returns: Timestamp, Root Cause, Relevance %, and Solutions."""
+    print(f"\n[Tool] Querying Vector DB for 3 similar incidents...")
+    results = incident_vc.similarity_search_with_relevance_scores(query, k=3)
+
+    context = "### TOP 3 RELEVANT HISTORICAL INCIDENTS ###\n"
+    for doc, score in results:
+        relevance_pct = round(score * 100, 2)
+        context += f"--- Incident ID: {doc.metadata.get('id', 'N/A')} ---\n"
+        context += f"Timestamp: {doc.metadata.get('timestamp', 'N/A')}\n"
+        context += f"Relevance Score: {relevance_pct}%\n"
+        # Truncating content slightly to prevent context overflow on small models
+        context += f"Full Log: {doc.page_content[:2000]}\n\n"
+    return context, results
+
+# --- Tool 2: SOP Retrieval ---
+@tool(response_format="content_and_artifact")
+def fetch_sops(query: str):
+    """Retrieves 3 similar SOPs for synthesis."""
+    print(f"\n[Tool] Querying Vector DB for 3 similar SOPs...")
+    results = sop_vc.similarity_search(query, k=3)
+
+    context = "### TOP 3 RELEVANT SOP DOCUMENTS ###\n"
+    for i, doc in enumerate(results, 1):
+        context += f"--- SOP Document {i} ---\nContent: {doc.page_content[:2000]}\n\n"
+    return context, results
+
+# --- Tool 3: Save Final Draft ---
+@tool
+def save_resolution_draft(incident_id: str, final_content: str):
     """
-    Call this tool to find a similar past incidents and their solutions.
-
-    Args:
-        query: A description of the problem or error log.
-        category_filter: (Optional) Filter by specific metadata category to narrow search.
-                        valid options usually include: 'Infrastructure', 'Techinal Debt', 'CI/CD Pipeline', 'Frontend / UX', 'Performance'.
+    Saves the final resolution and synthesized SOP draft to a text file.
+    Use this once the user is happy with the generated analysis.
     """
-    print(f"\n[Tool] Querying database for: '{query}' | Filter: {category_filter}")
-
-    search_kwargs = {"k": 2}
-
-    if category_filter:
-        search_kwargs["filter"] = {"category": category_filter}
-
-    results = vector_store.similarity_search(query, **search_kwargs)
-
-    if not results: 
-        return "No similar incidents found in the database.", []
-
-    context_text = "\n\n".join([
-        f"--- Past Incident ({doc.metadata.get('id', 'Unknown ID')}) ---\n"
-        f"Category: {doc.metadata.get('category', 'N/A')}\n"
-        f"Service: {doc.metadata.get('service', 'N/A')}\n"
-        f"Impact: {doc.metadata.get('impact', 'N/A')}\n"
-        f"Content:\n{doc.page_content}"
-        for doc in results
-    ])
-
-    return context_text, results
-
-tools = [retrieve_similar_incidents]
-llm = ChatOllama(model=LLM_MODEL, temperature=0, base_url="http://localhost:11434")
-
-agent_llm = llm.bind_tools(tools)
-
-def agent_node(state: MessagesState):
-    """
-    The main decision node.
-    """
-    messages = state["messages"]
-    response = agent_llm.invoke(messages)
+    if not os.path.exists(OUTPUT_FOLDER):
+        os.makedirs(OUTPUT_FOLDER)
     
-    # FIX 2: Return key must be "messages" to match State schema
-    return {
-        "messages": [response]
-    }
-
-tool_node = ToolNode(tools)
-
-workflow = StateGraph(MessagesState)
-
-workflow.add_node("agent", agent_node)
-workflow.add_node("tools", tool_node)
-
-workflow.add_edge(START, "agent")
-workflow.add_conditional_edges("agent", tools_condition)
-workflow.add_edge('tools', "agent")
-
-app = workflow.compile()
-
-def filter_critical_logs(full_log):
-    """
-    Extracts only ERROR and CRITICAL lines to reduce noise for the embedding model.
-    """
-    lines = full_log.strip().split('\n')
-    # Filter for high severity lines
-    critical_lines = [
-        line for line in lines 
-        if "ERROR" in line or "CRITICAL" in line
-    ]
+    # Sanitize filename
+    safe_id = incident_id.replace(' ', '_').replace('/', '-')
+    filename = f"{OUTPUT_FOLDER}/Resolution_{safe_id}.txt"
     
-    if not critical_lines:
-        return "No Critical Errors found in logs."
+    with open(filename, "w", encoding='utf-8') as f:
+        f.write(final_content)
     
-    return "\n".join(critical_lines)
+    print(f"\n[Tool] Draft saved to: {filename}")
+    return f"Successfully saved draft to {filename}"
 
-def solve_incident(new_incident_log):
-    print("\nProcessing New Incident Log...\n")
+# --- LangGraph Orchestration ---
 
-    filtered_query = filter_critical_logs(new_incident_log)
-    print(f"--- Filtered Query for RAG ---\n{filtered_query}\n------------------------------")
-
-    system_prompt = (
-        "You are a Senior Site Reliability Engineer (SRE). "
-        "You have access to a database of past incidents. "
-        "When given a log snippet, ALWAYS categorise the incident first and search the database to see if a similar solution exists. "
-        "Focus on the 'ERROR' and 'CRITICAL' lines provided."
-        "Then, provide a Root Cause and a Recommended Solution based on the retrieved data."
-        "Do not generate any examples except the root cause and solution."
-    )
-
-    initial_state = {
-        "messages": [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Analyze these specific errors:\n{filtered_query}")
-        ]
-    }
-
-    final_response = None
-    for event in app.stream(initial_state, stream_mode="values"):
-        message = event["messages"][-1]
-
-        if hasattr(message, "tool_calls") and len(message.tool_calls) > 0:
-            print("Agent decided to search knowledge base...")
-        elif message.type == "ai" and not message.tool_calls:
-            final_response = message.content
+def assistant_node(state: MessagesState):
+    system_prompt = SystemMessage(content=(
+        "You are an AI SRE Assistant. Start by greeting the user and asking for incident logs.\n\n"
+        "Once logs are provided:\n"
+        "1. CALL 'fetch_incidents' to find 3 similar past cases. Report their timestamps, root causes, and relevance %.\n"
+        "2. CALL 'fetch_sops' to find 3 relevant procedures. SYNTHESIZE these 3 into a single unified SOP.\n"
+        "3. Present the findings clearly to the user.\n"
+        "4. ASK the user if they want to save this as a final draft. If they say yes, use 'save_resolution_draft'."
+    ))
     
-    return final_response
+    tools = [fetch_incidents, fetch_sops, save_resolution_draft]
+    # We bind tools and invoke. We prepend the system prompt only for this call (stateless for graph).
+    return {"messages": [llm.bind_tools(tools).invoke([system_prompt] + state["messages"])]}
+
+# Graph Construction
+builder = StateGraph(MessagesState)
+builder.add_node("assistant", assistant_node)
+builder.add_node("tools", ToolNode([fetch_incidents, fetch_sops, save_resolution_draft]))
+
+builder.add_edge(START, "assistant")
+builder.add_conditional_edges("assistant", tools_condition)
+builder.add_edge("tools", "assistant")
+
+graph = builder.compile(checkpointer=MemorySaver())
+
+# --- Execution Logic ---
 
 if __name__ == "__main__":
-    sample_incident = """
-[2026-01-07 10:15:02] [INFO]  [Source] Triggered by commit 'a8f3b21' (Author: dev_user)
-[2026-01-07 10:15:10] [INFO]  [Build] Starting container build: docker-image-v2.4.1
-[2026-01-07 10:17:45] [INFO]  [Build] Docker image built successfully.
-[2026-01-07 10:17:50] [INFO]  [Test] Initiating Unit Tests...
-[2026-01-07 10:18:30] [INFO]  [Test] Unit Tests passed (142/142).
-[2026-01-07 10:18:35] [INFO]  [Test] Initiating Integration Tests...
-[2026-01-07 10:19:12] [ERROR] [Test] Integration Test Failure: 'DatabaseConnectionError'
-[2026-01-07 10:19:12] [ERROR] [Test] Details: Connection timeout to staging-db-01.
-[2026-01-07 10:19:15] [WARN]  [Pipeline] Retrying Integration Tests (Attempt 1/3)...
-[2026-01-07 10:19:40] [ERROR] [Test] Integration Test Failure: 'DatabaseConnectionError'
-[2026-01-07 10:19:45] [CRITICAL] [Pipeline] STAGE FAILED: Test phase unsuccessful.
-[2026-01-07 10:19:46] [INFO]  [Pipeline] Status changed to 'FAILED'.
-[2026-01-07 10:19:47] [INFO]  [Notification] Alert sent to Slack channel #ops-alerts.
-[2026-01-07 10:19:48] [INFO]  [Cleanup] Terminating ephemeral test environments.
-[2026-01-07 10:25:00] [INFO]  [Incident] Manual investigation started by On-Call Engineer.
-[2026-01-07 10:32:15] [DEBUG] [Incident] Root Cause: Staging DB credentials expired in the Vault.
-[2026-01-07 10:40:00] [INFO]  [Incident] Credentials updated. Manual trigger initiated.
-    """
+    config = {"configurable": {"thread_id": "sre_session_001"}}
+    print("--- SRE Assistant Active ---")
+    print("Type 'exit' or 'quit' to stop.")
+    
+    # 1. Start the conversation (System greeting)
+    # We send an empty message to trigger the Assistant node to run its logic (greeting)
+    initial_events = graph.stream(
+        {"messages": [HumanMessage(content="Hi, I am ready to start.")]}, 
+        config, 
+        stream_mode="updates"
+    )
+    
+    for event in initial_events:
+        for value in event.values():
+            if "messages" in value:
+                # Print the AI's greeting
+                value["messages"][-1].pretty_print()
 
-    solution = solve_incident(sample_incident)
+    # 2. Interactive Loop
+    while True:
+        try:
+            user_input = input("\nUser: ")
+            if user_input.lower() in ["exit", "quit"]: 
+                break
+            
+            # Stream updates (this prints tools and responses as they happen)
+            for event in graph.stream({"messages": [HumanMessage(content=user_input)]}, config, stream_mode="updates"):
+                for node_name, value in event.items():
+                    if "messages" in value:
+                        last_msg = value["messages"][-1]
+                        
+                        # Pretty print AI responses
+                        if isinstance(last_msg, AIMessage):
+                            # If it has tool calls, print them specifically
+                            if last_msg.tool_calls:
+                                print(f"\n[Assistant] Calling Tools: {[tc['name'] for tc in last_msg.tool_calls]}")
+                            else:
+                                last_msg.pretty_print()
+                        
+                        # Optional: Print Tool Outputs if you want to debug
+                        # if node_name == "tools":
+                        #     print(f"\n[Tool Output] {last_msg.content[:200]}...")
 
-    print("\n" + "="*40)
-    print("Final Agent Report")
-    print("="*40)
-    print(solution)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            break
