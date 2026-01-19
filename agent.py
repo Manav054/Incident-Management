@@ -31,7 +31,7 @@ sop_vc = Chroma(
 )
 
 # --- Tool 1: Incident Retrieval ---
-@tool(response_format="content_and_artifact")
+@tool
 def fetch_incidents(query: str):
     """Retrieves 3 similar incidents. Returns: Timestamp, Root Cause, Relevance %, and Solutions."""
     print(f"\n[Tool] Querying Vector DB for 3 similar incidents...")
@@ -48,7 +48,7 @@ def fetch_incidents(query: str):
     return context, results
 
 # --- Tool 2: SOP Retrieval ---
-@tool(response_format="content_and_artifact")
+@tool
 def fetch_sops(query: str):
     """Retrieves 3 similar SOPs for synthesis."""
     print(f"\n[Tool] Querying Vector DB for 3 similar SOPs...")

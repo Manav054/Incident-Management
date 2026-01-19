@@ -1,0 +1,2 @@
+High file system threshold error and server disconnection issue. Triggering the Multi-Region Failover script to ensure data consistency between Global Tables. Updating Route 53 CNAME records to route traffic to “us-west-2” (Standby region) to minimize downtime. Verifying data consistency between Global Tables once the primary region is back online.
+Additionally, I suggest reviewing and implementing a retention policy in CI/CD to delete images older than 30 days automatically to prevent similar issues in the future.
