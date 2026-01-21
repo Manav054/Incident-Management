@@ -1,141 +1,285 @@
 import os
+import json
+from typing import TypedDict, Annotated, Sequence, Literal
+
+# LangChain / LangGraph Core
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, Annotated, Sequence
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage
-from operator import add as add_messages
-from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage, trim_messages
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
+from operator import add as add_messages
 
+# Models & Vector Stores
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_chroma import Chroma
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
+from langchain_core.documents import Document
+
+# --- CONFIGURATION ---
 DB_PATH = "./chroma_db"
 EMBEDDING_MODEL = "gte-large:latest"
 LLM_MODEL = "llama-3.2-3b-it:latest"
 OUTPUT_FOLDER = "./resolutions"
 
+# Initialize Models
 llm = ChatOllama(model=LLM_MODEL, temperature=0)
 embedding = OllamaEmbeddings(model=EMBEDDING_MODEL)
 
-incident_vc = Chroma(
-    persist_directory=DB_PATH, 
-    embedding_function=embedding, 
-    collection_name="incident_collection"
-)
-sop_vc = Chroma(
-    persist_directory=DB_PATH, 
-    embedding_function=embedding, 
-    collection_name="sop_collection"
-)
+# --- 1. HYBRID RETRIEVAL SETUP (Optimization #1) ---
+
+def create_hybrid_retriever(collection_name: str):
+    """
+    Builds a Hybrid Retriever (Semantic + Keyword) for a given Chroma collection.
+    """
+    print(f"[{collection_name}] Initializing Vector Store...")
+    vector_store = Chroma(
+        persist_directory=DB_PATH,
+        embedding_function=embedding,
+        collection_name=collection_name
+    )
+    
+    # A. Semantic Retriever (Vector)
+    vector_retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    
+    # B. Keyword Retriever (BM25)
+    # We must fetch all docs to build the in-memory BM25 index.
+    # PROD NOTE: In production, cache this index instead of rebuilding on startup.
+    print(f"[{collection_name}] Building Keyword Index...")
+    data = vector_store.get()
+    docs_list = [
+        Document(page_content=txt, metadata=meta)
+        for txt, meta in zip(data["documents"], data["metadatas"])
+    ]
+    
+    if not docs_list:
+        print(f"⚠️ Warning: {collection_name} is empty. Hybrid search may degrade.")
+        return vector_retriever # Fallback
+        
+    bm25_retriever = BM25Retriever.from_documents(docs_list)
+    bm25_retriever.k = 3
+
+    # C. Ensemble (50% Semantic / 50% Keyword)
+    return EnsembleRetriever(
+        retrievers=[bm25_retriever, vector_retriever],
+        weights=[0.5, 0.5]
+    )
+
+# Initialize Global Retrievers
+incident_retriever = create_hybrid_retriever("incident_collection")
+sop_retriever = create_hybrid_retriever("sop_collection")
+
+
+# --- 2. TOOLS & STRUCTURED OUTPUT (Optimization #3) ---
+
+class ResolutionSchema(BaseModel):
+    incident_id: str = Field(description="The unique ID of the incident (e.g., ERR-2024-001).")
+    root_cause_analysis: str = Field(description="A technical explanation of why the issue occurred.")
+    relevant_sops: str = Field(description="A summary of the SOPs that were consulted.")
+    proposed_solution: str = Field(description="Concrete, step-by-step actions to fix the issue.")
 
 @tool
-def fetch_incidents(query: str) -> str:
+def signal_analysis(query: str):
     """
-    Use this tool ONLY when the user provides a specific error message or incident description. 
-    DO NOT use this tool for greetings like "Hi" or "Hello".
-    Retrieves 3 similar incidents. Returns: Timestamp, Root Cause, Relevance %, and Solutions.
+    Call this tool triggers the parallel research workflow. 
+    Use this immediately when the user provides an error log or incident description.
     """
-    print(f"\n[Tool] Querying Vector DB for 3 similar incidents...")
-    results = incident_vc.similarity_search_with_relevance_scores(query, k=3)
+    # This return value is just a placeholder. The real work happens in the graph nodes.
+    return f"Analysis triggered for: {query}"
 
-    context = "### TOP 3 RELEVANT HISTORICAL INCIDENTS ###\n"
-    for doc, score in results:
-        relevance_pct = round(score * 100, 2)
-        context += f"--- Incident ID: {doc.metadata.get('id', 'N/A')} ---\n"
-        context += f"Timestamp: {doc.metadata.get('timestamp', 'N/A')}\n"
-        context += f"Relevance Score: {relevance_pct}%\n"
-        # Truncating content slightly to prevent context overflow on small models
-        context += f"Full Log: {doc.page_content[:2000]}\n\n"
-    return context
-
-@tool
-def fetch_sops(query: str) -> str:
+@tool(args_schema=ResolutionSchema)
+def save_resolution_draft(incident_id: str, root_cause_analysis: str, relevant_sops: str, proposed_solution: str):
     """
-    Use this tool ONLY when the user provides a specific error message or incident description. 
-    DO NOT use this tool for greetings like "Hi" or "Hello".
-    Retrieves 3 similar SOPs for synthesis.
-    """
-    print(f"\n[Tool] Querying Vector DB for 3 similar SOPs...")
-    results = sop_vc.similarity_search(query, k=3)
-
-    context = "### TOP 3 RELEVANT SOP DOCUMENTS ###\n"
-    for i, doc in enumerate(results, 1):
-        context += f"--- SOP Document {i} ---\nContent: {doc.page_content[:2000]}\n\n"
-    return context
-
-@tool
-def save_resolution_draft(incident_id: str, final_content: str):
-    """
-    Saves the final resolution and synthesized SOP draft to a text file.
-    Use this once the user is happy with the generated analysis.
+    Saves the final resolution to a text file.
+    The AI acts as a form-filler; Python handles the actual file generation.
     """
     if not os.path.exists(OUTPUT_FOLDER):
         os.makedirs(OUTPUT_FOLDER)
     
-    # Sanitize filename
     safe_id = incident_id.replace(' ', '_').replace('/', '-')
     filename = f"{OUTPUT_FOLDER}/Resolution_{safe_id}.txt"
     
+    file_content = f"""
+=========================================
+INCIDENT RESOLUTION DRAFT
+ID: {incident_id}
+=========================================
+
+### 1. ROOT CAUSE ANALYSIS
+{root_cause_analysis}
+
+### 2. RELEVANT SOPS
+{relevant_sops}
+
+### 3. PROPOSED SOLUTION
+{proposed_solution}
+
+=========================================
+Generated by AI SRE Agent
+"""
     with open(filename, "w", encoding='utf-8') as f:
-        f.write(final_content)
+        f.write(file_content)
     
-    print(f"\n[Tool] Draft saved to: {filename}")
-    return f"Successfully saved draft to {filename}"
+    return f"Successfully saved structured draft to {filename}"
 
-tools = [fetch_incidents, fetch_sops, save_resolution_draft]
-
+# The LLM only sees these two tools. Actual retrieval happens in background nodes.
+tools = [signal_analysis, save_resolution_draft]
 llm_with_tools = llm.bind_tools(tools)
+
+
+# --- 3. GRAPH NODES (Optimization #4: Parallelism) ---
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
-def should_continue(state: AgentState):
-    """Check if the last message contain tool calls."""
+def retrieve_incidents_node(state: AgentState):
+    """Background Node: Runs Hybrid Search for Incidents."""
     last_message = state["messages"][-1]
-    if last_message.tool_calls:
-        return "tools"
-    return END
+    # Extract query from the 'signal_analysis' tool call
+    query = last_message.tool_calls[0]["args"]["query"]
+    
+    print(f"\n[Node] Parallel Search: Incidents for '{query}'")
+    results = incident_retriever.invoke(query)
+    
+    context = "### TOP RELEVANT HISTORICAL INCIDENTS ###\n"
+    for doc in results:
+        context += f"--- Incident ID: {doc.metadata.get('id', 'N/A')} ---\n"
+        context += f"Full Log: {doc.page_content[:2000]}\n\n"
+        
+    return {
+        "messages": [
+            ToolMessage(
+                tool_call_id=last_message.tool_calls[0]["id"], 
+                content=context,
+                name="signal_analysis" # We map this back to the trigger tool
+            )
+        ]
+    }
+
+def retrieve_sops_node(state: AgentState):
+    """Background Node: Runs Hybrid Search for SOPs."""
+    last_message = state["messages"][-1]
+    query = last_message.tool_calls[0]["args"]["query"]
+    
+    print(f"\n[Node] Parallel Search: SOPs for '{query}'")
+    results = sop_retriever.invoke(query)
+    
+    context = "### TOP RELEVANT SOP DOCUMENTS ###\n"
+    for i, doc in enumerate(results, 1):
+        context += f"--- SOP Document {i} ---\nContent: {doc.page_content[:2000]}\n\n"
+        
+    return {
+        "messages": [
+            ToolMessage(
+                tool_call_id=last_message.tool_calls[0]["id"], 
+                content=context,
+                name="signal_analysis"
+            )
+        ]
+    }
+
+# --- 4. MESSAGE TRIMMING (Optimization #2) ---
 
 system_prompt = """
 You are an AI SRE Assistant.
 
-### INSTRUCTIONS ###
-1. **GREETING PHASE:** If the user says "Hi", "Hello", or asks a general question, respond conversationally. **DO NOT USE ANY TOOLS.** Simply ask them to provide the incident logs.
-2. **ANALYSIS PHASE:** ONLY when the user provides specific error logs, stack traces, or an incident description, you must:
-   - Call 'fetch_incidents' to find similar past cases.
-   - Call 'fetch_sops' to find relevant procedures.
-3. **SYNTHESIS:** Analyze the tool outputs and present a solution.
-4. **FINALIZATION:** Ask if the user wants to save the draft. If yes, call 'save_resolution_draft'.
-   - **CRITICAL:** The 'final_content' argument MUST include:
-     1. The Incident ID.
-     2. The Full list of Similar Incidents found.
-     3. The Full list of SOPs found.
-     4. Your final synthesized analysis/resolution.
+### PROTOCOL
+1. **GREETING:** If user says "Hi", ask for logs.
+2. **ANALYSIS:** When provided with logs/errors:
+   - Call `signal_analysis(query="...")` immediately.
+   - This will automatically fetch Incidents and SOPs in the background.
+3. **SYNTHESIS:** Use the retrieved logs and SOPs to propose a solution.
+4. **FINALIZATION:** Ask to save. If approved, call `save_resolution_draft`.
 
-REMEMBER: Do not call 'fetch_incidents' until you actually see an incident description.
+### RULES
+- `signal_analysis` is your READ operation.
+- `save_resolution_draft` is your WRITE operation.
 """
 
+# Config: Keep last 10 messages + System Prompt
+trimmer = trim_messages(
+    max_tokens=10,
+    strategy="last",
+    token_counter=len,
+    include_system=True,
+    allow_partial=False,
+    start_on="human",
+)
+
 def call_llm(state: AgentState):
-    """Function to call the LLM with the current state."""
+    """Runs the LLM with Context Window Management."""
     messages = state["messages"]
     
+    # 1. Enforce System Prompt
     if not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=system_prompt)] + messages
     
-    response = llm_with_tools.invoke(messages)
-
+    # 2. Trim History
+    trimmed_messages = trimmer.invoke(messages)
+    
+    # 3. Inference
+    response = llm_with_tools.invoke(trimmed_messages)
     return {"messages": [response]}
 
+
+# --- 5. GRAPH LOGIC & ROUTING ---
+
+def route_tools(state: AgentState):
+    """Router: Decides between Fan-Out (Parallel) or Standard Tools."""
+    last_message = state["messages"][-1]
+    
+    if not last_message.tool_calls:
+        return END
+    
+    tool_name = last_message.tool_calls[0]["name"]
+    
+    if tool_name == "signal_analysis":
+        # FAN-OUT: Trigger both retrieval nodes
+        return ["retrieve_incidents", "retrieve_sops"]
+        
+    elif tool_name == "save_resolution_draft":
+        # Standard tool execution
+        return "tools"
+        
+    return END
+
 workflow = StateGraph(AgentState)
+
+# Add Nodes
 workflow.add_node("assistant", call_llm)
-workflow.add_node("tools", ToolNode(tools))
+workflow.add_node("retrieve_incidents", retrieve_incidents_node)
+workflow.add_node("retrieve_sops", retrieve_sops_node)
+workflow.add_node("tools", ToolNode([save_resolution_draft]))
 
-workflow.add_conditional_edges("assistant", should_continue)
-workflow.add_edge("tools", "assistant")
+# Add Edges
 workflow.set_entry_point("assistant")
+workflow.add_conditional_edges(
+    "assistant",
+    route_tools,
+    {
+        "retrieve_incidents": "retrieve_incidents",
+        "retrieve_sops": "retrieve_sops",
+        "tools": "tools",
+        END: END
+    }
+)
 
+# Fan-In: All paths return to assistant
+workflow.add_edge("retrieve_incidents", "assistant")
+workflow.add_edge("retrieve_sops", "assistant")
+workflow.add_edge("tools", "assistant")
+
+# Compile with Interrupts (Optimization #5: Human-in-the-Loop)
 checkpointer = MemorySaver()
-agent = workflow.compile(checkpointer=checkpointer)
+agent = workflow.compile(
+    checkpointer=checkpointer,
+    interrupt_before=["tools"] # Pauses before 'save_resolution_draft' runs
+)
+
+
+# --- 6. MAIN EXECUTION LOOP ---
 
 def running_agent():
     print("\n---- AI SRE AGENT (Type 'exit' to quit) ----")
@@ -143,19 +287,44 @@ def running_agent():
 
     while True:
         try:
-            user_input = input('User: ')
-        except EOFError:
+            user_input = input('\nUser: ')
+            if user_input.lower() in ["exit", "quit"]:
+                break
+            
+            # A. Run Agent until it pauses or finishes
+            result = agent.invoke({"messages": [HumanMessage(content=user_input)]}, config=config)
+            
+            # B. Check for Interrupts (Human-in-the-Loop)
+            snapshot = agent.get_state(config)
+            
+            if snapshot.next and snapshot.next[0] == "tools":
+                # We are paused before a tool call
+                last_msg = snapshot.values["messages"][-1]
+                tool_call = last_msg.tool_calls[0]
+                tool_name = tool_call["name"]
+                
+                print(f"\n[⚠️ INTERRUPT] Agent wants to call tool: '{tool_name}'")
+                print(f"--> Args: {json.dumps(tool_call['args'], indent=2)}")
+                
+                # Check Approval
+                approval = input("--> Do you approve saving this file? (y/n): ").strip().lower()
+                
+                if approval == 'y':
+                    print("--> Approved. Saving...")
+                    result = agent.invoke(None, config=config) # Resume
+                else:
+                    print("--> Rejected. Sending feedback...")
+                    feedback = HumanMessage(content="I rejected the draft. Please revise based on my feedback.")
+                    result = agent.invoke({"messages": [feedback]}, config=config)
+
+            # C. Print Final Response
+            if result and "messages" in result:
+                print("\n--- Assistant ---")
+                print(result["messages"][-1].content)
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
             break
-
-        if user_input.lower() in ["exit", "quit"]:
-            break
-
-        result = agent.invoke({
-            "messages": [HumanMessage(content=user_input)]
-        }, config=config)
-
-        print("\n--- Assistant ---")
-        print(result["messages"][-1].content)
 
 if __name__ == "__main__":
     running_agent()
